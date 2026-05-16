@@ -1,0 +1,151 @@
+---
+// Видимый на сайте индикатор офлайн-кеша: сколько страниц сохранено,
+// готово ли всё для работы без сети, есть ли обновление.
+import { getCollection } from 'astro:content';
+
+const totalPages = (await getCollection('docs')).length;
+---
+<div id="pwa-badge" class="pwa-badge" data-state="loading" data-total={totalPages} hidden>
+  <span class="pwa-dot" aria-hidden="true"></span>
+  <span id="pwa-badge-text">Подготовка офлайна…</span>
+  <button id="pwa-update" type="button" hidden>Обновить</button>
+</div>
+
+<style>
+  .pwa-badge {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: var(--sl-color-bg-nav, var(--sl-color-bg));
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 999px;
+    font-size: 13px;
+    color: var(--sl-color-text);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+    z-index: 50;
+    cursor: default;
+  }
+  .pwa-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--sl-color-gray-3);
+    flex: none;
+  }
+  /* Качаем кеш — мигающая точка. */
+  .pwa-badge[data-state='loading'] .pwa-dot {
+    background: #e0a106;
+    animation: pwa-pulse 1s ease-in-out infinite;
+  }
+  /* Всё в кеше — зелёная. */
+  .pwa-badge[data-state='ready'] .pwa-dot { background: #4ca524; }
+  .pwa-badge[data-state='ready'] { cursor: pointer; }
+  /* Сейчас офлайн — синяя. */
+  .pwa-badge[data-state='offline'] .pwa-dot { background: #2b7fff; }
+  /* Есть обновление — оранжевая. */
+  .pwa-badge[data-state='update'] .pwa-dot { background: #e0a106; }
+  @keyframes pwa-pulse { 50% { opacity: 0.35; } }
+  @media (prefers-reduced-motion: reduce) {
+    .pwa-badge[data-state='loading'] .pwa-dot { animation: none; }
+  }
+  .pwa-badge button {
+    border: none;
+    background: var(--sl-color-accent);
+    color: var(--sl-color-white);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+</style>
+
+<script>
+  import { registerSW } from 'virtual:pwa-register';
+
+  const badge = document.getElementById('pwa-badge')!;
+  const text = document.getElementById('pwa-badge-text')!;
+  const updateBtn = document.getElementById('pwa-update') as HTMLButtonElement | null;
+  const totalPages = Number(badge.dataset.total ?? '0');
+
+  let offlineReady = false;
+  let updateReady = false;
+
+  /** Считаем, сколько страниц и файлов реально лежит в Cache Storage. */
+  async function countCache() {
+    if (!('caches' in window)) return { pages: 0, files: 0 };
+    const pages = new Set<string>();
+    let files = 0;
+    for (const name of await caches.keys()) {
+      const cache = await caches.open(name);
+      for (const req of await cache.keys()) {
+        files++;
+        const path = new URL(req.url).pathname;
+        if (path.endsWith('.html') || path.endsWith('/')) pages.add(path);
+      }
+    }
+    return { pages: pages.size, files };
+  }
+
+  function setState(state: string, label: string) {
+    badge.dataset.state = state;
+    text.textContent = label;
+    badge.hidden = false;
+  }
+
+  async function render() {
+    if (updateReady) {
+      setState('update', 'Доступно обновление');
+      if (updateBtn) updateBtn.hidden = false;
+      return;
+    }
+    if (updateBtn) updateBtn.hidden = true;
+
+    const { pages, files } = await countCache();
+    const shown = Math.min(pages, totalPages || pages);
+    badge.title = `Страниц в кеше: ${pages}${totalPages ? ' из ' + totalPages : ''} · файлов: ${files}`;
+
+    const allCached =
+      offlineReady ||
+      (!!navigator.serviceWorker?.controller && totalPages > 0 && pages >= totalPages);
+
+    if (!navigator.onLine) {
+      setState('offline', `Офлайн · ${shown}${totalPages ? '/' + totalPages : ''} стр. в кеше`);
+    } else if (allCached) {
+      setState('ready', `Доступно офлайн · ${totalPages || shown} стр. ✓`);
+    } else {
+      setState('loading', `Сохраняю для офлайна… ${shown}${totalPages ? '/' + totalPages : ''}`);
+    }
+  }
+
+  const updateSW = registerSW({
+    onNeedRefresh() {
+      updateReady = true;
+      render();
+    },
+    onOfflineReady() {
+      offlineReady = true;
+      render();
+    },
+  });
+
+  updateBtn?.addEventListener('click', () => updateSW(true));
+  // Клик по «готово» — пересчитать (на случай ручной проверки).
+  badge.addEventListener('click', () => {
+    if (badge.dataset.state === 'ready' || badge.dataset.state === 'offline') render();
+  });
+  window.addEventListener('online', render);
+  window.addEventListener('offline', render);
+  navigator.serviceWorker?.addEventListener?.('controllerchange', render);
+
+  // Пока не всё скачано — опрашиваем кеш и обновляем счётчик.
+  const timer = setInterval(async () => {
+    await render();
+    if (badge.dataset.state === 'ready') clearInterval(timer);
+  }, 1500);
+
+  render();
+</script>

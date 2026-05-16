@@ -1,0 +1,25 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Локальные настройки Claude Code / Cowork
+.claude/
+
+# Node / build
+node_modules/
+dist/
+.astro/
+*.log
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Артефакты Pagefind (генерируются на этапе build)
+site/public/pagefind/
