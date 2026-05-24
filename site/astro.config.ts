@@ -62,10 +62,18 @@ export default defineConfig({
         Footer: './src/components/overrides/Footer.astro',
       },
       pagination: true,
-      sidebar: GROUPS.map(([dir, label]) => ({
-        label,
-        autogenerate: { directory: dir },
-      })),
+      sidebar: [
+        {
+          label: 'Скачать всё одним PDF',
+          link: '/gosy.pdf',
+          attrs: { download: '', target: '_blank', rel: 'noopener' },
+          badge: { text: 'PDF', variant: 'success' },
+        },
+        ...GROUPS.map(([dir, label]) => ({
+          label,
+          autogenerate: { directory: dir },
+        })),
+      ],
     }),
     AstroPWA({
       registerType: 'autoUpdate',
@@ -92,11 +100,16 @@ export default defineConfig({
         // Прекешируем ВСЁ за один заход: все страницы + полный индекс
         // поиска Pagefind (pf_meta/pf_index/pf_fragment/wasm .pagefind).
         globPatterns: [
-          '**/*.{html,css,js,svg,woff2,woff,json,webmanifest,pf_meta,pf_index,pf_fragment,pagefind}',
+          '**/*.{html,css,js,svg,woff2,woff,json,webmanifest,pf_meta,pf_index,pf_fragment,pagefind,pdf}',
         ],
         navigateFallback: `${BASE}/offline`,
         navigateFallbackDenylist: [new RegExp(`^${BASE}/pagefind/`)],
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
+        // Подхватываем управление сразу, чтоб первый офлайн работал без перезагрузки.
+        clientsClaim: true,
+        skipWaiting: true,
+        // Удаляем кеши старых сборок, чтобы не зависнуть на устаревшем SW.
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith(`${BASE}/pagefind/`),

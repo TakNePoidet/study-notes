@@ -9,3 +9,6 @@ dist/
 .idea/
 .claude/
 public/pagefind/
+# Сгенерированный PDF — собирается в CI через prebuild → pnpm pdf
+public/gosy.pdf
+public/gosy.debug.html
